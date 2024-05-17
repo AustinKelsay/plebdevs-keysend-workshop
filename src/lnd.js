@@ -1,4 +1,6 @@
-import axios from "axios"; // Import the axios library for making HTTP requests
+import axios from "axios";
+import CryptoJS from "crypto-js";
+import { Buffer } from "buffer"; // Use the buffer package
 
 /**
  * Sends a keysend payment through the LND REST API.
@@ -9,47 +11,64 @@ import axios from "axios"; // Import the axios library for making HTTP requests
  * @returns {Object} - The response data from the LND node.
  */
 export const sendKeysend = async (destination, amount, message) => {
-  // Retrieve the macaroon and host from environment variables
-  const MACAROON = import.meta.env.VITE_MACAROON;
-  const HOST = import.meta.env.VITE_HOST;
+  try {
+    // Retrieve the macaroon and host from environment variables
+    const MACAROON = import.meta.env.VITE_MACAROON;
+    const HOST = import.meta.env.VITE_HOST;
 
-  // Generate a random 32-byte preimage
-  const preimage = crypto.randomBytes(32);
-  // Create a SHA-256 hash of the preimage to use as the payment hash
-  const payment_hash = crypto
-    .createHash("sha256")
-    .update(preimage)
-    .digest("hex");
+    // Generate a random 32-byte (256-bit) preimage
+    const preimage = CryptoJS.lib.WordArray.random(32);
+    const preimageHex = preimage.toString(CryptoJS.enc.Hex);
 
-  // Construct the request body for the keysend payment
-  const requestBody = {
-    dest: destination, // Destination public key
-    amt: amount, // Amount in satoshis
-    payment_hash: payment_hash, // SHA-256 hash of the preimage
-    final_cltv_delta: 40, // Time-lock value (in blocks) for the payment
-    dest_custom_records: {
-      34349334: Buffer.from(message, "utf8").toString("hex"), // Custom record for the message
-      5482373484: preimage.toString("hex"), // Custom record for the preimage
-    },
-    timeout_seconds: 60, // Timeout in seconds for the payment
-    fee_limit: { fixed: 1000 }, // Maximum fee (in satoshis) for the payment
-    dest_features: [9], // Features required in the destination node (e.g., TLV)
-  };
+    // Create a SHA-256 hash of the preimage to use as the payment hash
+    const hash = CryptoJS.SHA256(preimage);
+    const paymentHash = hash.toString(CryptoJS.enc.Hex);
 
-  // Make a POST request to the LND REST API to send the keysend payment
-  const response = await axios.post(
-    `https://${HOST}:8080/v1/channels/transactions`, // API endpoint for transactions
-    requestBody, // Request body containing the payment details
-    {
-      headers: {
-        "Grpc-Metadata-Macaroon": MACAROON, // Macaroon for authentication
-        "Content-Type": "application/json", // Content type of the request
+    // Ensure preimage is a Buffer
+    const preimageBuffer = Buffer.from(preimageHex, "hex");
+    const paymentHashBuffer = Buffer.from(paymentHash, "hex");
+
+    // Construct the request body for the keysend payment
+    const requestBody = {
+      dest: Buffer.from(destination, "hex").toString("base64"), // Base64 encoded destination public key
+      amt: amount, // Amount in satoshis
+      payment_hash: paymentHashBuffer.toString("base64"), // Base64 encoded SHA-256 hash of the preimage
+      final_cltv_delta: 40, // Time-lock value (in blocks) for the payment
+      dest_custom_records: {
+        34349334: Buffer.from(message, "utf8").toString("base64"), // Custom record for the message
+        5482373484: preimageBuffer.toString("base64"), // Custom record for the preimage
       },
-    },
-  );
+      // timeout_seconds: 60, // Timeout in seconds for the payment
+      fee_limit: {
+        fixed: 1000, // Maximum fee (in satoshis) for the payment
+      },
+      dest_features: [9], // Features required in the destination node (e.g., TLV)
+    };
 
-  // Return the response data from the LND node
-  return response.data;
+    // Log the request body to debug the issue
+    console.log("Request Body:", JSON.stringify(requestBody, null, 2));
+
+    // Make a POST request to the LND REST API to send the keysend payment
+    const response = await axios.post(
+      `https://${HOST}:8080/v1/channels/transactions`, // API endpoint for transactions
+      requestBody, // Request body containing the payment details
+      {
+        headers: {
+          "Grpc-Metadata-Macaroon": MACAROON, // Macaroon for authentication
+          "Content-Type": "application/json", // Content type of the request
+        },
+      },
+    );
+
+    // Return the response data from the LND node
+    return response.data;
+  } catch (error) {
+    console.error(
+      "Error sending keysend:",
+      error.response ? error.response.data : error.message,
+    );
+    throw error;
+  }
 };
 
 /**
