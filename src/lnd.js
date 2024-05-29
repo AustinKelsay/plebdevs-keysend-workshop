@@ -6,6 +6,7 @@ export const sendKeysend = async (
   host,
   macaroon,
   destination,
+  senderPubkey,
   amount,
   message,
 ) => {
@@ -26,6 +27,8 @@ export const sendKeysend = async (
       dest_custom_records: {
         34349334: Buffer.from(message, "utf8").toString("base64"),
         5482373484: preimageBuffer.toString("base64"),
+        // Add the pubkey as thid custom_record so we can match up our received messages with who sent them
+        65537: Buffer.from(senderPubkey, "hex").toString("base64"),
       },
       fee_limit: {
         fixed: 1000,
@@ -68,6 +71,8 @@ export const getKeysends = async (host, macaroon) => {
 
   const invoices = response.data.invoices;
 
+  console.log(invoices);
+
   const keysendTransactions = invoices
     .filter((tx) => tx.is_keysend === true)
     .map((tx) => ({
@@ -77,8 +82,16 @@ export const getKeysends = async (host, macaroon) => {
         Buffer.from(tx.htlcs[0].custom_records["34349334"], "base64").toString(
           "utf-8",
         ),
+      chat:
+        tx.htlcs.length > 0 &&
+        tx.htlcs[0].custom_records["65537"] &&
+        Buffer.from(tx.htlcs[0].custom_records["65537"], "base64").toString(
+          "hex",
+        ),
       sent: false,
     }));
+
+  console.log("keysendTran", keysendTransactions);
 
   return keysendTransactions;
 };

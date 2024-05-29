@@ -44,11 +44,17 @@ export default function App() {
     e.preventDefault();
     if (message.trim() !== "" && selectedChat !== "") {
       try {
-        await sendKeysend(host, macaroon, selectedChat, 1100, message); // Adjust amount as needed
+        await sendKeysend(
+          host,
+          macaroon,
+          selectedChat,
+          info.identity_pubkey,
+          1100,
+          message,
+        ); // Adjust amount as needed
 
         const newMessage = {
-          id: Date.now(),
-          content: message,
+          message: message,
           chat: selectedChat,
           sent: true,
         };
@@ -134,14 +140,13 @@ export default function App() {
       <div>
         <h2>Messages</h2>
         <ul>
-          <p>Received:</p>
           {messages
-            .filter((message) => message.sent === false)
-            .map(
-              (message, index) => (
-                console.log(message), (<li key={index}>{message.message}</li>)
-              ),
-            )}
+            .filter((message) => message.chat === selectedChat)
+            .map((message, index) => (
+              <li key={index}>
+                <p>{message.message}</p>
+              </li>
+            ))}
         </ul>
       </div>
 
