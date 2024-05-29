@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { sendKeysend, getKeysends, getPeers } from "./lnd"; // Import the keysend functions
+import { Buffer } from "buffer";
+import { sendKeysend, getKeysends, getPeers, getInfo } from "./lnd"; // Import the keysend functions
 import "./App.css";
 
 export default function App() {
   const [message, setMessage] = useState(""); // State to hold the current message being typed
   const [messages, setMessages] = useState([]); // State to hold all messages
   const [peers, setPeers] = useState([]); // State to hold all peers
+  const [info, setInfo] = useState(null); // State to hold the current node info
   const [selectedChat, setSelectedChat] = useState(""); // State to hold the selected chat/peer
   const [host, setHost] = useState(""); // State to hold the host
   const [macaroon, setMacaroon] = useState(""); // State to hold the macaroon
@@ -15,15 +17,23 @@ export default function App() {
   const handleMacaroonChange = (e) => setMacaroon(e.target.value);
 
   const handleConnect = async () => {
-    if (host.trim() !== "" && macaroon.trim() !== "") {
-      setIsConnected(true);
-      try {
-        const activePeers = await getPeers(host, macaroon);
-        setPeers(activePeers);
-      } catch (error) {
-        console.error("Error connecting to node:", error);
-        setIsConnected(false);
+    try {
+      const nodeInfoResponse = await getInfo(host, macaroon);
+
+      if (nodeInfoResponse) {
+        setInfo(nodeInfoResponse);
+        setIsConnected(true);
+        try {
+          const activePeers = await getPeers(host, macaroon);
+          setPeers(activePeers);
+        } catch (error) {
+          console.error("Error connecting to node:", error);
+          setIsConnected(false);
+        }
       }
+    } catch (error) {
+      console.error("Error connecting to node:", error);
+      setIsConnected(false);
     }
   };
 
@@ -55,23 +65,19 @@ export default function App() {
       const fetchMessages = async () => {
         try {
           const keysendMessages = await getKeysends(host, macaroon);
-          const newMessages = keysendMessages.map((tx) => ({
-            id: tx.tx_hash,
-            content: Buffer.from(
-              tx.dest_custom_records["34349334"],
-              "hex",
-            ).toString("utf8"),
-            chat: tx.dest,
-            sent: false,
-          }));
-          setMessages((prevMessages) => [...prevMessages, ...newMessages]);
+          // remove dupes
+          const uniqueMessages = keysendMessages.filter(
+            (message, index, self) =>
+              index === self.findIndex((t) => t.id === message.id),
+          );
+          setMessages(uniqueMessages);
         } catch (error) {
           console.error("Error fetching keysend messages:", error);
         }
       };
 
       fetchMessages();
-      const interval = setInterval(fetchMessages, 60000);
+      const interval = setInterval(fetchMessages, 5000);
 
       return () => clearInterval(interval);
     }
@@ -106,6 +112,7 @@ export default function App() {
 
   return (
     <main>
+      {info && <h1>Connected to: {info.alias}</h1>}
       <div>
         <label htmlFor="chatDropdown">Select Chat:</label>
         <select
@@ -127,13 +134,14 @@ export default function App() {
       <div>
         <h2>Messages</h2>
         <ul>
+          <p>Received:</p>
           {messages
-            .filter((message) => message.chat === selectedChat)
-            .map((message) => (
-              <li key={message.id}>
-                {message.content} {message.sent ? "(Sent)" : "(Received)"}
-              </li>
-            ))}
+            .filter((message) => message.sent === false)
+            .map(
+              (message, index) => (
+                console.log(message), (<li key={index}>{message.message}</li>)
+              ),
+            )}
         </ul>
       </div>
 

@@ -1,6 +1,6 @@
 import axios from "axios";
 import CryptoJS from "crypto-js";
-import { Buffer } from "buffer"; // Use the buffer package
+import { Buffer } from "buffer";
 
 export const sendKeysend = async (
   host,
@@ -59,18 +59,26 @@ export const sendKeysend = async (
 };
 
 export const getKeysends = async (host, macaroon) => {
-  const response = await axios.get(`https://${host}:8080/v1/transactions`, {
+  const response = await axios.get(`https://${host}:8080/v1/invoices`, {
     headers: {
       "Grpc-Metadata-Macaroon": macaroon,
       "Content-Type": "application/json",
     },
   });
 
-  const transactions = response.data.transactions;
+  const invoices = response.data.invoices;
 
-  const keysendTransactions = transactions.filter((tx) => {
-    return tx.dest_custom_records && tx.dest_custom_records["34349334"];
-  });
+  const keysendTransactions = invoices
+    .filter((tx) => tx.is_keysend === true)
+    .map((tx) => ({
+      amount: tx.amt_paid_sat,
+      message:
+        tx.htlcs.length > 0 &&
+        Buffer.from(tx.htlcs[0].custom_records["34349334"], "base64").toString(
+          "utf-8",
+        ),
+      sent: false,
+    }));
 
   return keysendTransactions;
 };
@@ -84,6 +92,8 @@ export const getPeers = async (host, macaroon) => {
 
   const peers = response.data.peers;
 
+  console.log("peers", peers);
+
   if (!peers && !peers.length > 0) {
     return [];
   }
@@ -93,4 +103,18 @@ export const getPeers = async (host, macaroon) => {
   });
 
   return peerKeys;
+};
+
+export const getInfo = async (host, macaroon) => {
+  const response = await axios.get(`https://${host}:8080/v1/getinfo`, {
+    headers: {
+      "Grpc-Metadata-Macaroon": macaroon,
+    },
+  });
+
+  if (!response.data) {
+    return null;
+  }
+
+  return response.data;
 };
