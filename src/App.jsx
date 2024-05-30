@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { Buffer } from "buffer";
 import { sendKeysend, getKeysends, getPeers, getInfo } from "./lnd"; // Import the keysend functions
 import "./App.css";
 
@@ -58,7 +57,7 @@ export default function App() {
           chat: selectedChat,
           sent: true,
         };
-        setMessages([...messages, newMessage]);
+        setMessages((prevMessages) => [...prevMessages, newMessage]);
         setMessage("");
       } catch (error) {
         console.error("Error sending keysend:", error);
@@ -71,12 +70,24 @@ export default function App() {
       const fetchMessages = async () => {
         try {
           const keysendMessages = await getKeysends(host, macaroon);
-          // remove dupes
-          const uniqueMessages = keysendMessages.filter(
+
+          // remove duplicates by message.message field
+          const uniqueKeysendMessages = keysendMessages.filter(
             (message, index, self) =>
-              index === self.findIndex((t) => t.id === message.id),
+              index === self.findIndex((t) => t.message === message.message),
           );
-          setMessages(uniqueMessages);
+
+          setMessages((prevMessages) => {
+            const combinedMessages = [...prevMessages, ...uniqueKeysendMessages];
+
+            // remove duplicates from combined messages
+            const uniqueCombinedMessages = combinedMessages.filter(
+              (message, index, self) =>
+                index === self.findIndex((t) => t.message === message.message),
+            );
+
+            return uniqueCombinedMessages;
+          });
         } catch (error) {
           console.error("Error fetching keysend messages:", error);
         }
@@ -141,7 +152,7 @@ export default function App() {
         <h2>Messages</h2>
         <ul>
           {messages
-            .filter((message) => message.chat === selectedChat)
+            .filter((message) => message?.chat && message.chat === selectedChat)
             .map((message, index) => (
               <li key={index}>
                 <p>{message.message}</p>
